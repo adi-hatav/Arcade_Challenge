@@ -1,0 +1,8 @@
+/data
+*.zip
+./.venv
+./.vscode
+./models
+./logs
+./.ipynb_checkpoints
+test_gpu.ipynb
