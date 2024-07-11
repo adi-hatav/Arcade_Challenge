@@ -39,8 +39,12 @@ def canny_edge(image):
 
     # Clip the result to the range [0, 255]
     clipped = np.clip(edges, 0, 255).astype(np.uint8)
-    
-    return clipped
+
+    # Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced_image = clahe.apply(clipped)
+
+    return enhanced_image
 
 def preprocess_all_imgs(transform):
     img_dir_prefix = 'data/arcade/syntax'
