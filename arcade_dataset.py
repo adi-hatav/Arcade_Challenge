@@ -4,11 +4,6 @@ import json
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from preprocess_images import top_hat_transform, canny_edge
-
 
 class ArcadeDataset(Dataset):
     def __init__(self, image_dir, annotation_file, transform_dirs, transform=None, num_classes=25):
@@ -60,7 +55,6 @@ class ArcadeDataset(Dataset):
         # Create masks
         image_id = idx + 1
         mask, separate_masks = self.create_masks(image_id, height, width)
-
         return {
             'original_image': torch.tensor(image, dtype=torch.float32).unsqueeze(0),
             'transformed_image': torch.tensor(transformed_image, dtype=torch.float32),
@@ -87,5 +81,4 @@ def load_dataset(split, shuffle, base_path='data/arcade/syntax', batch_size=8, n
         num_classes=num_classes
     )
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-
     return dataloader
