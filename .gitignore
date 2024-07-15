@@ -6,4 +6,6 @@
 ./logs
 ./.ipynb_checkpoints
 test_gpu.ipynb
-./__pycache__
+lightning_logs/*
+*.ckpt
+__pycache__/*
