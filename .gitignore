@@ -6,3 +6,4 @@
 ./logs
 ./.ipynb_checkpoints
 test_gpu.ipynb
+./__pycache__

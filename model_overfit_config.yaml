@@ -1,0 +1,12 @@
+input:
+  image_shape: [3, 512, 512]
+
+model:
+  n_initial_filters : 32
+
+optimization:
+  batch_size: 3
+  epochs: 500
+  learning_rate: 0.0001
+  loss: dice
+  metrics: [accuracy]

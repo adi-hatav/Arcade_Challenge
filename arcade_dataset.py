@@ -11,7 +11,7 @@ class ArcadeDataset(Dataset):
         self.image_dir = image_dir
         self.transform_dirs = transform_dirs
         self.transform = transform
-        self.image_files = sorted(os.listdir(image_dir))
+        self.image_files = sorted(os.listdir(image_dir), key=lambda f: int(''.join(filter(str.isdigit, f))))
         self.annotations = json.load(open(annotation_file))['annotations']
 
     def __len__(self):
@@ -30,10 +30,10 @@ class ArcadeDataset(Dataset):
         return mask, separate_masks
 
     def load_transformed_image(self, img_name, transform_type):
-        transform_img_path = os.path.join(self.transform_dirs[transform_type], img_name)
+        transform_img_path = os.path.join(self.transform_dirs[transform_type], 'images/' + img_name)
         if os.path.exists(transform_img_path):
             return cv2.imread(transform_img_path, cv2.IMREAD_GRAYSCALE)
-        return None
+        raise FileNotFoundError(f"Transformed image not found at {transform_img_path}")
 
     def __getitem__(self, idx):
         img_name = self.image_files[idx]
@@ -44,16 +44,10 @@ class ArcadeDataset(Dataset):
         # Apply transformation
         transformed_image_top_hat = self.load_transformed_image(img_name, 'top_hat_transform')
         transformed_image_canny = self.load_transformed_image(img_name, 'canny_edge')
-
-        if transformed_image_top_hat is None:
-            transformed_image_top_hat = self.transform(image)
-        if transformed_image_canny is None:
-            transformed_image_canny = self.transform(image)
-
         transformed_image = np.stack((image, transformed_image_top_hat, transformed_image_canny), axis=0)
 
         # Create masks
-        image_id = idx + 1
+        image_id = idx + 1 
         mask, separate_masks = self.create_masks(image_id, height, width)
         return {
             'original_image': torch.tensor(image, dtype=torch.float32).unsqueeze(0),
@@ -82,3 +76,9 @@ def load_dataset(split, shuffle, base_path='data/arcade/syntax', batch_size=8, n
     )
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
+
+if __name__ == '__main__':
+    train_loader = load_dataset(split='train', shuffle=True)
+    for batch in train_loader:
+        print(batch['original_image'].shape, batch['transformed_image'].shape, batch['masks'].shape, batch['separate_masks'].shape)
+        break
