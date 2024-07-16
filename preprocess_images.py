@@ -56,7 +56,7 @@ def preprocess_all_imgs(transform):
 
     for fold in data_folds:
         img_dir = os.path.join(img_dir_prefix, fold + '/images')
-        out_dir = os.path.join(out_dir_prefix, fold)
+        out_dir = os.path.join(out_dir_prefix, fold + '/images')
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
