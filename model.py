@@ -226,7 +226,7 @@ class VAEDecoder(nn.Module):
 
 
 class LabelClassifier(nn.Module):
-    def __init__(self, in_channels, n_classes, gn_groups=8, n_init_features=32):
+    def __init__(self, in_channels, n_classes, gn_groups=8, n_init_features=32, drop=0.4):
         super(LabelClassifier, self).__init__()
         self.initial_layers = nn.Sequential(
             nn.GroupNorm(gn_groups, n_init_features * 8),
@@ -244,8 +244,10 @@ class LabelClassifier(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(256, 128),
             nn.ReLU(),
+            nn.Dropout(drop),
             nn.Linear(128, 64),
             nn.ReLU(),
+            nn.Dropout(drop),
             nn.Linear(64, n_classes),
         )
 
@@ -279,20 +281,20 @@ class UNet(nn.Module):
 
 class VesselSegmentationModel(pl.LightningModule):
     def __init__(
-        self, in_channels, out_shape=(25, 512, 512), gn_groups=8, n_init_features=32
+        self, in_channels=3, out_shape=(25, 512, 512), gn_groups=8, n_init_features=32
     ):
         super(VesselSegmentationModel, self).__init__()
         self.model = UNet(in_channels, out_shape, gn_groups, n_init_features)
         self.multi_class = out_shape[0] > 1
         self.n_classes = out_shape[0]
 
-    def _dice_loss(self, y_gt, y_pred, multi_class=False, eps=1):
+    def _dice_loss(self, y_gt, y_pred, multi_class=False, eps=1e-6):
         if not multi_class:
             y_gt = y_gt.view(-1)
             y_pred = y_pred.view(-1)
             intersection = torch.sum(y_gt * y_pred)
             dice_score = (eps + 2 * intersection) / (torch.sum(y_gt) + torch.sum(y_pred) + eps)
-            return -dice_score
+            return 1 - dice_score
         else:
             y_gt = y_gt.view(-1, self.n_classes)
             y_pred = y_pred.view(-1, self.n_classes)
@@ -300,38 +302,36 @@ class VesselSegmentationModel(pl.LightningModule):
             dice_score = (1 + 2 * intersection) / (
                 torch.sum(y_gt, dim=0) + torch.sum(y_pred, dim=0) + 1
             )
-            return -dice_score.mean()
+            return 1 - dice_score.mean()
 
-    def _tversky_loss(self, y_gt, y_pred, alpha=0.4, beta=0.6, eps=1, multi_class=False):
+    def _tversky_loss(self, y_gt, y_pred, alpha=0.4, beta=0.6, eps=1e-6, multi_class=False):
         if not multi_class:
             y_gt = y_gt.view(-1)
             y_pred = y_pred.view(-1)
             tp = torch.sum(y_gt * y_pred)
             fp = torch.sum((1 - y_gt) * y_pred)
             fn = torch.sum(y_gt * (1 - y_pred))
-            return -(eps + (tp + eps) / (tp + alpha * fp + beta * fn + eps))
+            tversky_score = (eps + tp) / (eps + tp + alpha * fp + beta * fn)
         else:
             y_gt = y_gt.view(-1, self.n_classes)
             y_pred = y_pred.view(-1, self.n_classes)
             tp = torch.sum(y_gt * y_pred, dim=0)
             fp = torch.sum((1 - y_gt) * y_pred, dim=0)
             fn = torch.sum(y_gt * (1 - y_pred), dim=0)
-            return -(eps + (tp + eps) / (tp + alpha * fp + beta * fn + eps)).mean()
+            tversky_score = (eps + tp) / (eps + tp + alpha * fp + beta * fn)
+        return 1 - tversky_score.mean()
 
-    def _focal_loss(self, y_gt, y_pred, gamma=2, eps=1, multi_class=False):
-        if not multi_class:
-            y_gt = y_gt.view(-1)
-            y_pred = y_pred.view(-1)
-            return -torch.sum(y_gt * (1 - y_pred).pow(gamma) * torch.log(y_pred + eps))
-        else:
-            y_gt = y_gt.view(-1, self.n_classes)
-            y_pred = y_pred.view(-1, self.n_classes)
-            return -torch.sum(
-                y_gt * (1 - y_pred).pow(gamma) * torch.log(y_pred + eps), dim=0
-            ).mean()
+    def _focal_loss(self, y_gt, y_pred, alpha=0.25, gamma=2):
+        y_gt = y_gt.view(-1)
+        y_pred = y_pred.view(-1)
+
+        BCE_loss = torch.nn.functional.binary_cross_entropy(y_pred, y_gt, reduction="mean")
+        pt = torch.exp(-BCE_loss)
+        F_loss = alpha * (1 - pt) ** gamma * BCE_loss
+        return F_loss.mean()
 
     def _bce_loss(self, y_gt, y_pred, multi_class=False):
-        return torch.functional.F.binary_cross_entropy(y_pred, y_gt, reduction="mean") / self.n_classes
+        return torch.functional.F.binary_cross_entropy(y_pred, y_gt, reduction="mean")
         
     def _label_cross_entropy_loss(self, y_gt, y_pred):
         return torch.nn.functional.binary_cross_entropy(y_pred, y_gt)
@@ -344,12 +344,12 @@ class VesselSegmentationModel(pl.LightningModule):
         x,
         y,
         labels_gt,
-        lambda_kl=0.15,
-        lambda_l2=0.15,
-        lambda_bce=0.3,
-        lambda_dice=1.0,
-        lambda_tversky=0.8,
-        lambda_label=0.,
+        lambda_kl=0.1,
+        lambda_l2=0.1,
+        lambda_bce=0.5,
+        lambda_dice=1.,
+        lambda_tversky=0.,
+        lambda_label=0.5,
         lambda_focal=0.,
     ):
         y_hat, _, [mu, logvar], labels, reconstruction_loss = self.model(x)
@@ -357,11 +357,13 @@ class VesselSegmentationModel(pl.LightningModule):
 
         bce_loss = self._bce_loss(y, y_hat, multi_class=self.multi_class)
         dice_loss = self._dice_loss(y, y_hat, multi_class=self.multi_class)
-        tversky_loss = self._tversky_loss(y, y_hat, multi_class=self.multi_class)
-        focal_loss = self._focal_loss(y, y_hat, multi_class=self.multi_class)
+        # tversky_loss = self._tversky_loss(y, y_hat, multi_class=self.multi_class)
+        # focal_loss = self._focal_loss(y, y_hat)
+        tversky_loss = 0
+        focal_loss = 0
         classification_loss = self._label_cross_entropy_loss(labels_gt, labels)
         loss = (
-            lambda_kl * kl_loss
+            + lambda_kl * kl_loss
             + lambda_l2 * reconstruction_loss
             + lambda_bce * bce_loss
             + lambda_dice * dice_loss
@@ -372,8 +374,9 @@ class VesselSegmentationModel(pl.LightningModule):
         return loss, kl_loss, reconstruction_loss, bce_loss, dice_loss, tversky_loss, focal_loss, classification_loss
 
     def training_step(self, batch, batch_idx):
+        reconstruction_lambda = 0.1 if batch_idx <= 1000 * 5 / 8 else 0.01
         loss, kl_loss, reconstruction_loss, bce_loss, dice_loss, tversky_loss, focal_loss, classification_loss = (
-            self._loss(batch["transformed_image"], batch["masks"])
+            self._loss(batch["transformed_image"], batch["separate_masks"], batch["labels"], lambda_l2=reconstruction_lambda)
         )
         self.log("train_loss", loss)
         self.log("kl_loss", kl_loss)
@@ -408,62 +411,41 @@ class VesselSegmentationModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         loss = self._dice_loss(
-            batch["masks"], self.model(batch["transformed_image"])[0]
+            batch["separate_masks"], self.model(batch["transformed_image"])[0]
         )
         self.log("val_loss", loss)
         return loss
 
 
 if __name__ == "__main__":
-    # Overfit the model on a single image and plot the model output
+    # Clear the cuda cache
+    torch.cuda.empty_cache()
+
+    # Create the model
     model = VesselSegmentationModel(in_channels=3)
-    # # Training the model
-
-    # # Learning rate scheduler
-    # lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval="step")
-
-    # # Early stopping
-    # early_stop = pl.callbacks.EarlyStopping(monitor="val_loss", patience=5, mode="min")
-
-    # # Model saving
-    # model_checkpoint = pl.callbacks.ModelCheckpoint(
-    #     monitor="val_loss", mode="min", save_top_k=2, dirpath="models/"
-    # )
-
-    # # trainer = pl.Trainer(
-    # #     max_epochs=50,
-    # #     accelerator="auto",
-    # #     callbacks=[lr_monitor, early_stop, model_checkpoint],
-    # #     check_val_every_n_epoch=2,
-    # #     log_every_n_steps=1,
-    # #     # fast_dev_run=True,
-    # # )
-    # # trainer.fit(model)
-
-    # model = VesselSegmentationModel.load_from_checkpoint(
-    #     "models/epoch=13-step=1750.ckpt", in_channels=3
-    # ).cuda()
-    # model.eval()
-
-    # # Test the model on a single image
-    # import matplotlib.pyplot as plt
-
-    # dataset = load_dataset("val")
-    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
-    # batch = next(iter(dataloader))
-    # image, mask = batch["transformed_image"].cuda(), batch["masks"].cuda()
-
-    # # Predict the mask and reconstruct the image
-    # pred_mask, recon, _, _ = model(image) 
-
-    # fig, ax = plt.subplots(1, 4, figsize=(20, 5))
-    # print(f'Image shape: {image.shape}, Mask shape: {mask.shape}, Predicted mask shape: {pred_mask.shape}, Reconstructed image shape: {recon.shape}')
-    # ax[0].imshow(image[0, :, :].cpu().numpy().squeeze(0))
-    # ax[0].set_title("Original Image")
-    # ax[1].imshow(mask.detach().cpu().numpy().squeeze(0))
-    # ax[1].set_title("Ground Truth Mask")
-    # ax[2].imshow(pred_mask.squeeze(0).detach().numpy())
-    # ax[2].set_title("Predicted Mask")
-    # ax[3].imshow(recon.squeeze(0).detach().numpy())
-    # ax[3].set_title("Reconstructed Image")
-    # plt.show()
+    
+    # Train the model for 10 epochs on the entire data
+    callbacks = [
+        pl.callbacks.ModelCheckpoint(
+            monitor="val_loss",
+            dirpath="./models/first_run",
+            save_top_k=3,
+            mode="min",
+        ),
+        pl.callbacks.LearningRateMonitor(logging_interval="step"),
+        pl.callbacks.EarlyStopping(
+            monitor="val_loss",
+            patience=5,
+            mode="min",
+        ),
+    ]
+    trainer = pl.Trainer(
+        max_epochs=200,
+        accelerator='auto',
+        callbacks=callbacks,
+        num_sanity_val_steps=1,
+        log_every_n_steps=1,
+        enable_progress_bar=True,
+        # fast_dev_run=True
+    )
+    trainer.fit(model)
