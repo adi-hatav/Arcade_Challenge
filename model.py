@@ -433,11 +433,11 @@ if __name__ == "__main__":
             mode="min",
         ),
         pl.callbacks.LearningRateMonitor(logging_interval="step"),
-        pl.callbacks.EarlyStopping(
-            monitor="val_loss",
-            patience=5,
-            mode="min",
-        ),
+        # pl.callbacks.EarlyStopping(
+        #     monitor="val_loss",
+        #     patience=5,
+        #     mode="min",
+        # ),
     ]
     trainer = pl.Trainer(
         max_epochs=200,
