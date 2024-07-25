@@ -1,5 +1,6 @@
 import pytorch_lightning as pl
 import torch
+import gc
 
 import wandb
 from model import VesselSegmentationModel
@@ -21,8 +22,8 @@ if __name__ == "__main__":
             },
             "lr": {
                 "distribution": "uniform",
-                "min": 1e-5,
-                "max": 5e-3,
+                "min": 1e-4,
+                "max": 7e-3,
             },
             "lambda_kl": {
                 "distribution": "uniform",
@@ -54,22 +55,28 @@ if __name__ == "__main__":
             "drop_enc": {
                 "distribution": "uniform",
                 "min": 0.0,
-                "max": 0.7,
+                "max": 0.4,
             },
             "drop_label": {
                 "distribution": "uniform",
                 "min": 0.1,
-                "max": 0.7,
+                "max": 0.5,
             },
         },
     }
     sweep_id = wandb.sweep(sweep_config, project="DMI-2024")
     wandb_logger = pl.loggers.WandbLogger()
-    with wandb.init() as run:
-        # torch.cuda.empty_cache()
-        torch.set_float32_matmul_precision('medium')
 
-        config = run.config
+    def clear_memory():
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def train():
+        clear_memory()
+        torch.set_float32_matmul_precision('medium')
+        wandb.init()
+        config = wandb.config
+        run = wandb.run
         run_id = run.id
         model = VesselSegmentationModel(config)
         callbacks = [
@@ -82,7 +89,7 @@ if __name__ == "__main__":
             pl.callbacks.LearningRateMonitor(logging_interval="step"),
         ]
         trainer = pl.Trainer(
-            max_epochs=40,
+            max_epochs=1,
             accelerator="auto",
             callbacks=callbacks,
             log_every_n_steps=1,
@@ -91,6 +98,5 @@ if __name__ == "__main__":
         )
         trainer.fit(model)
         trainer.test(model)
-        wandb.log(model.metrics)
-        wandb.log(model.hparams)
-        wandb.finish()
+
+    wandb.agent(sweep_id, train, count=20)

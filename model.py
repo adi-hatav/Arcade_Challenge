@@ -405,7 +405,7 @@ class VesselSegmentationModel(pl.LightningModule):
         lr = self.config["lr"] if "lr" in self.config else lr
         optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=10, eta_min=1e-5
+            optimizer, T_max=10, eta_min=1e-4
         )
         return {
             "optimizer": optimizer,
