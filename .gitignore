@@ -9,3 +9,5 @@ test_gpu.ipynb
 lightning_logs/*
 *.ckpt
 __pycache__/*
+__pycache__
+wandb/*
