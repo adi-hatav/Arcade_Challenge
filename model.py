@@ -1,14 +1,10 @@
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
+from segmentation_models_pytorch.losses import DiceLoss, TverskyLoss
+from segmentation_models_pytorch.metrics import f1_score, get_stats, iou_score
+
 from arcade_dataset import load_dataset
-from segmentation_models_pytorch.losses import (
-    DiceLoss,
-    TverskyLoss,
-    FocalLoss,
-    LovaszLoss,
-)
-from segmentation_models_pytorch.metrics import f1_score, iou_score, get_stats
 
 H_in, W_in = 512, 512
 
@@ -37,8 +33,12 @@ class ResBlock(nn.Module):
 
 class UNetEncoder(nn.Module):
     def __init__(
-        self, in_channels, out_shape=(1, H_in, W_in), gn_groups=8, n_init_features=32,
-        drop=0.2
+        self,
+        in_channels,
+        out_shape=(1, H_in, W_in),
+        gn_groups=8,
+        n_init_features=32,
+        drop=0.2,
     ):
         super(UNetEncoder, self).__init__()
         H_in, W_in = out_shape[1], out_shape[2]
@@ -269,11 +269,18 @@ class LabelClassifier(nn.Module):
 
 class UNet(nn.Module):
     def __init__(
-        self, in_channels, out_shape=(25, 512, 512), gn_groups=8, n_init_features=32,
-        drop_enc=0.2, drop_label=0.4
+        self,
+        in_channels,
+        out_shape=(25, 512, 512),
+        gn_groups=8,
+        n_init_features=32,
+        drop_enc=0.2,
+        drop_label=0.4,
     ):
         super(UNet, self).__init__()
-        self.encoder = UNetEncoder(in_channels, out_shape, gn_groups, n_init_features, drop_enc)
+        self.encoder = UNetEncoder(
+            in_channels, out_shape, gn_groups, n_init_features, drop_enc
+        )
         self.decoder = UNetDecoder(out_shape, gn_groups, n_init_features)
         self.vae_decoder = VAEDecoder(gn_groups, n_init_features)
         self.label_classifier = LabelClassifier(
@@ -297,25 +304,37 @@ class UNet(nn.Module):
 
 
 class VesselSegmentationModel(pl.LightningModule):
-    def __init__(
-        self, config=None
-    ):
+    def __init__(self, config=None):
         super(VesselSegmentationModel, self).__init__()
         if config is None:
             config = {}
         self.in_channels = config["in_channels"] if "in_channels" in config else 3
-        self.out_shape = config["out_shape"] if "out_shape" in config else (25, 512, 512)
+        self.out_shape = (
+            config["out_shape"] if "out_shape" in config else (25, 512, 512)
+        )
         self.gn_groups = config["gn_groups"] if "gn_groups" in config else 8
-        self.n_init_features = config["n_init_features"] if "n_init_features" in config else 32
+        self.n_init_features = (
+            config["n_init_features"] if "n_init_features" in config else 32
+        )
         self.drop_enc = config["drop_enc"] if "drop_enc" in config else 0.2
         self.drop_label = config["drop_label"] if "drop_label" in config else 0.4
-        self.model = UNet(self.in_channels, self.out_shape, self.gn_groups, self.n_init_features, self.drop_enc, self.drop_label)
+        self.model = UNet(
+            self.in_channels,
+            self.out_shape,
+            self.gn_groups,
+            self.n_init_features,
+            self.drop_enc,
+            self.drop_label,
+        )
         self.multi_class = self.out_shape[0] > 1
         self.n_classes = self.out_shape[0]
         self.config = config
 
     def _label_cross_entropy_loss(self, y_gt, y_pred):
         return torch.nn.functional.binary_cross_entropy(y_pred, y_gt)
+
+    def _bce_loss(self, y_gt, y_pred):
+        return torch.functional.F.binary_cross_entropy(y_pred, y_gt, reduction="mean")
 
     def forward(self, x):
         return self.model(x)
@@ -331,27 +350,39 @@ class VesselSegmentationModel(pl.LightningModule):
         lambda_dice=0.1,
         lambda_tversky=0.0,
         lambda_label=0.0,
-        lambda_focal=0.0,
-        lambda_lovasz=0.0,
     ):
         y_hat, _, [mu, logvar], labels, reconstruction_loss = self.model(x)
         kl_loss = -(1 / x.numel()) * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-        lambda_kl = self.config["lambda_kl"] if "lambda_kl" in self.config else lambda_kl
-        lambda_l2 = self.config["lambda_l2"] if "lambda_l2" in self.config else lambda_l2
-        lambda_bce = self.config["lambda_bce"] if "lambda_bce" in self.config else lambda_bce
-        lambda_dice = self.config["lambda_dice"] if "lambda_dice" in self.config else lambda_dice
-        lambda_tversky = self.config["lambda_tversky"] if "lambda_tversky" in self.config else lambda_tversky
-        lambda_label = self.config["lambda_label"] if "lambda_label" in self.config else lambda_label
-        lambda_focal = self.config["lambda_focal"] if "lambda_focal" in self.config else lambda_focal
-        lambda_lovasz = self.config["lambda_lovasz"] if "lambda_lovasz" in self.config else lambda_lovasz
+        lambda_kl = (
+            self.config["lambda_kl"] if "lambda_kl" in self.config else lambda_kl
+        )
+        lambda_l2 = (
+            self.config["lambda_l2"] if "lambda_l2" in self.config else lambda_l2
+        )
+        lambda_bce = (
+            self.config["lambda_bce"] if "lambda_bce" in self.config else lambda_bce
+        )
+        lambda_dice = (
+            self.config["lambda_dice"] if "lambda_dice" in self.config else lambda_dice
+        )
+        lambda_tversky = (
+            self.config["lambda_tversky"]
+            if "lambda_tversky" in self.config
+            else lambda_tversky
+        )
+        lambda_label = (
+            self.config["lambda_label"]
+            if "lambda_label" in self.config
+            else lambda_label
+        )
 
         classification_loss = self._label_cross_entropy_loss(labels_gt, labels)
-        dice_loss = DiceLoss("multilabel")(y_hat, y)
-        tversky_loss = TverskyLoss("multilabel")(y_hat, y)
-        focal_loss = FocalLoss("multilabel")(y_hat, y)
-        bce_loss = nn.BCELoss()(y_hat, y)
-        lovasz_loss = LovaszLoss("multilabel")(y_hat, y)
+        dice_loss = DiceLoss("multilabel", from_logits=False)(y_hat, y)
+        tversky_loss = TverskyLoss(
+            "multilabel", from_logits=False, alpha=0.7, beta=0.3
+        )(y_hat, y)
+        bce_loss = self._bce_loss(y, y_hat)
         loss = (
             +lambda_kl * kl_loss
             + lambda_l2 * reconstruction_loss
@@ -359,8 +390,6 @@ class VesselSegmentationModel(pl.LightningModule):
             + lambda_dice * dice_loss
             + lambda_tversky * tversky_loss
             + lambda_label * classification_loss
-            + lambda_focal * focal_loss
-            + lovasz_loss * lambda_lovasz
         )
         return (
             loss,
@@ -369,8 +398,6 @@ class VesselSegmentationModel(pl.LightningModule):
             bce_loss,
             dice_loss,
             tversky_loss,
-            focal_loss,
-            lovasz_loss,
             classification_loss,
         )
 
@@ -382,8 +409,6 @@ class VesselSegmentationModel(pl.LightningModule):
             bce_loss,
             dice_loss,
             tversky_loss,
-            focal_loss,
-            lovasz_loss,
             classification_loss,
         ) = self._loss(
             batch["transformed_image"],
@@ -396,9 +421,7 @@ class VesselSegmentationModel(pl.LightningModule):
         self.log("bce_loss", bce_loss)
         self.log("dice_loss", dice_loss)
         self.log("tversky_loss", tversky_loss)
-        self.log("focal_loss", focal_loss)
         self.log("classification_loss", classification_loss)
-        self.log("lovasz_loss", lovasz_loss)
         return loss
 
     def configure_optimizers(self, lr=1e-4):
@@ -416,7 +439,9 @@ class VesselSegmentationModel(pl.LightningModule):
         scheduler.step()
 
     def train_dataloader(self, batch_size=8):
-        batch_size = self.config["batch_size"] if "batch_size" in self.config else batch_size
+        batch_size = (
+            self.config["batch_size"] if "batch_size" in self.config else batch_size
+        )
         return torch.utils.data.DataLoader(
             load_dataset("train"), batch_size=batch_size, num_workers=7, shuffle=False
         )
@@ -439,8 +464,6 @@ class VesselSegmentationModel(pl.LightningModule):
             bce_loss,
             dice_loss,
             tversky_loss,
-            focal_loss,
-            lovasz_loss,
             classification_loss,
         ) = self._loss(
             batch["transformed_image"], batch["separate_masks"], batch["labels"]
@@ -451,9 +474,7 @@ class VesselSegmentationModel(pl.LightningModule):
         self.log("val_bce_loss", bce_loss)
         self.log("val_dice_loss", dice_loss)
         self.log("val_tversky_loss", tversky_loss)
-        self.log("val_focal_loss", focal_loss)
         self.log("val_classification_loss", classification_loss)
-        self.log("val_lovasz_loss", lovasz_loss)
         return loss
 
     def test_step(self, batch, batch_idx, threshold=0.5):
@@ -473,27 +494,49 @@ class VesselSegmentationModel(pl.LightningModule):
 if __name__ == "__main__":
     # Clear the cuda cache
     torch.cuda.empty_cache()
-    torch.set_float32_matmul_precision('medium')
+    torch.set_float32_matmul_precision("medium")
 
     # Create the model
-    model = VesselSegmentationModel(config={"in_channels": 3, "out_shape": (25, 512, 512)})
+    model = VesselSegmentationModel(
+        config={
+            "in_channels": 3,
+            "out_shape": (25, 512, 512),
+            "gn_groups": 8,
+            "n_init_features": 32,
+            "drop_enc": 0.4,
+            "drop_label": 0.4,
+            "lr": 3e-4,
+            "lambda_kl": 0.1,
+            "lambda_l2": 0.1,
+            "lambda_bce": 0.5,
+            "lambda_dice": 1.0,
+            "lambda_tversky": 0.0,
+            "lambda_label": 0.5,
+        }
+    )
 
-    # Train the model for 10 epochs on the entire data
     callbacks = [
         pl.callbacks.ModelCheckpoint(
             monitor="val_loss",
-            dirpath="./models/second_run",
+            dirpath="./models/run_with_dice_bce",
             save_top_k=3,
             mode="min",
         ),
         pl.callbacks.LearningRateMonitor(logging_interval="step"),
     ]
     trainer = pl.Trainer(
-        max_epochs=200,
+        max_epochs=300,
         accelerator="auto",
         callbacks=callbacks,
         log_every_n_steps=1,
         enable_progress_bar=True,
+        # overfit_batches=1,
+        # fast_dev_run=True,
     )
+
+    # Compile the model
+    compiled_model = torch.compile(model)
+
+    # Train the model
     # trainer.fit(model)
     trainer.test(model)

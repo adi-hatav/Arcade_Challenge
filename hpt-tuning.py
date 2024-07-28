@@ -15,36 +15,31 @@ if __name__ == "__main__":
         },
         "parameters": {
             "batch_size": {
-                "distribution": "q_log_uniform_values",
-                "q": 4,
-                "min": 8,
-                "max": 64,
+                "values": [8],
             },
             "lr": {
                 "distribution": "uniform",
-                "min": 1e-4,
-                "max": 7e-3,
+                "min": 5e-4,
+                "max": 1e-2,
             },
             "lambda_kl": {
-                "distribution": "uniform",
-                "min": 0.05,
-                "max": 0.2,
+                "distribution": "normal",
+                "mu": 0.1,
+                "sigma": 0.02,
             },
             "lambda_l2": {
-                "values": [1e-1, 5e-2, 1e-4],
+                "distribution": "normal",
+                "mu": 0.1,
+                "sigma": 0.02,
             },
             "lambda_bce": {
-                "distribution": "uniform",
-                "min": 0.1,
-                "max": 0.5,
+                "values": [0.0, 0.5, 1.0],
             },
             "lambda_dice": {
-                "distribution": "normal",
-                "mu": 1.0,
-                "sigma": 0.4,
+                "values": [0.0, 0.5, 1.0],
             },
             "lambda_tversky": {
-                "values": [0.0, 0.1, 0.5, 1.0],
+                "values": [0.0, 0.5, 1.0],
             },
             "lambda_label": {
                 "values": [0.0, 0.5, 1e1],
@@ -53,14 +48,10 @@ if __name__ == "__main__":
                 "values": [0.0, 0.1, 0.5, 1.0],
             },
             "drop_enc": {
-                "distribution": "uniform",
-                "min": 0.0,
-                "max": 0.4,
+                "values": [0.1, 0.3, 0.5],
             },
             "drop_label": {
-                "distribution": "uniform",
-                "min": 0.1,
-                "max": 0.5,
+                "values": [0.1, 0.3, 0.5],
             },
         },
     }
@@ -72,7 +63,7 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
 
     def train():
-        clear_memory()
+        # clear_memory()
         torch.set_float32_matmul_precision('medium')
         wandb.init()
         config = wandb.config
@@ -89,7 +80,7 @@ if __name__ == "__main__":
             pl.callbacks.LearningRateMonitor(logging_interval="step"),
         ]
         trainer = pl.Trainer(
-            max_epochs=1,
+            max_epochs=5,
             accelerator="auto",
             callbacks=callbacks,
             log_every_n_steps=1,
