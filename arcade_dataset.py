@@ -17,10 +17,13 @@ class ArcadeDataset(Dataset):
         self.image_dir = image_dir
         self.transform_dirs = transform_dirs
         self.transform = transform
-        self.image_files = sorted(
-            os.listdir(image_dir), key=lambda f: int("".join(filter(str.isdigit, f)))
-        )
-        self.annotations = json.load(open(annotation_file))["annotations"]
+        self.image_files = os.listdir(image_dir)
+        self.json = json.load(open(annotation_file))
+        self.annotations = self.json["annotations"]
+        self.img_id2file = {}
+        for rec in self.json['images']:
+            img_id, img_file = rec['id'], rec['file_name']
+            self.img_id2file[img_id] = img_file
 
     def __len__(self):
         return len(self.image_files)
@@ -41,16 +44,16 @@ class ArcadeDataset(Dataset):
                     cv2.fillPoly(separate_masks[category_id], [pts], color=1)
         return mask, separate_masks, labels
 
-    def load_transformed_image(self, img_name, transform_type):
+    def load_transformed_image(self, img_file, transform_type):
         transform_img_path = os.path.join(
-            self.transform_dirs[transform_type], "images", img_name
+            self.transform_dirs[transform_type], "images", img_file
         )
         if os.path.exists(transform_img_path):
             return cv2.imread(transform_img_path, cv2.IMREAD_GRAYSCALE)
         raise FileNotFoundError(f"Transformed image not found at {transform_img_path}")
 
     def __getitem__(self, idx):
-        img_name = self.image_files[idx]
+        img_name = self.img_id2file[idx + 1]
         img_path = os.path.join(self.image_dir, img_name)
         image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         height, width = image.shape
