@@ -20,8 +20,8 @@ if __name__ == "__main__":
             },
             "lr": {
                 "distribution": "uniform",
-                "min": 5e-4,
-                "max": 1e-4,
+                "min": 1e-4,
+                "max": 5e-4,
             },
             "lambda_kl": {
                 "distribution": "normal",
