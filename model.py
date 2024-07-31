@@ -279,6 +279,7 @@ class UNet(nn.Module):
         n_init_features=32,
         drop_enc=0.2,
         drop_label=0.4,
+        RMSE=False,
     ):
         super(UNet, self).__init__()
         self.encoder = UNetEncoder(
@@ -289,6 +290,7 @@ class UNet(nn.Module):
         self.label_classifier = LabelClassifier(
             in_channels, out_shape[0], gn_groups, n_init_features, drop_label
         )
+        self.RMSE = RMSE
 
     def forward(self, x):
         encoder_output, skips = self.encoder(x)
@@ -297,6 +299,8 @@ class UNet(nn.Module):
         decoder_output = torch.sigmoid(decoder_output)
         label_output = self.label_classifier(encoder_output)
         reconstruction_loss = nn.MSELoss()(vae_output, x[:, 0, :, :].unsqueeze(1))
+        if self.RMSE:
+            reconstruction_loss = torch.sqrt(reconstruction_loss)
         return (
             decoder_output,
             vae_output,
@@ -321,6 +325,7 @@ class VesselSegmentationModel(pl.LightningModule):
         )
         self.drop_enc = config["drop_enc"] if "drop_enc" in config else 0.2
         self.drop_label = config["drop_label"] if "drop_label" in config else 0.4
+        self.RMSE = config["RMSE"] if "RMSE" in config else False
         self.model = UNet(
             self.in_channels,
             self.out_shape,
@@ -328,6 +333,7 @@ class VesselSegmentationModel(pl.LightningModule):
             self.n_init_features,
             self.drop_enc,
             self.drop_label,
+            self.RMSE,
         )
         self.multi_class = self.out_shape[0] > 1
         self.n_classes = self.out_shape[0]
@@ -565,6 +571,7 @@ if __name__ == "__main__":
             "lambda_label": 0.5,
             "alpha_tversky": 0.4,
             "beta_tversky": 0.6,
+            "RMSE": True,
         }
     )
 
@@ -580,7 +587,7 @@ if __name__ == "__main__":
 
     # Continue training
     trainer = pl.Trainer(
-        max_epochs=200,
+        max_epochs=2,
         accelerator="auto",
         callbacks=callbacks,
         log_every_n_steps=1,
@@ -591,5 +598,5 @@ if __name__ == "__main__":
     compiled_model = torch.compile(model, fullgraph=True)
 
     # Train the model
-    # trainer.fit(model) 
-    # trainer.test(model)
+    trainer.fit(model) 
+    trainer.test(model)
