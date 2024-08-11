@@ -15,7 +15,7 @@ def train():
     callbacks = [
         pl.callbacks.ModelCheckpoint(
             monitor="val_f1",
-            dirpath=f"./models/wandb_sweep/{run_id}",
+            dirpath=f"./models/final_wandb_sweep/{run_id}",
             save_top_k=3,
             mode="max",
         ),
@@ -23,7 +23,7 @@ def train():
     ]
     wandb_logger = pl.loggers.WandbLogger()
     trainer = pl.Trainer(
-        max_epochs=1,
+        max_epochs=30,
         accelerator="auto",
         callbacks=callbacks,
         log_every_n_steps=1,

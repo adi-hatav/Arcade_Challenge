@@ -228,6 +228,7 @@ class VAEDecoder(nn.Module):
         x = self.sample(mu, logvar)
         x = self.upsample(x)
         x = self.final_conv(x)
+        x = 255.0 * torch.sigmoid(x) 
         return x, [mu, logvar]
 
 
@@ -279,7 +280,7 @@ class UNet(nn.Module):
         n_init_features=32,
         drop_enc=0.2,
         drop_label=0.4,
-        RMSE=False,
+        mse_root=False,
     ):
         super(UNet, self).__init__()
         self.encoder = UNetEncoder(
@@ -290,7 +291,7 @@ class UNet(nn.Module):
         self.label_classifier = LabelClassifier(
             in_channels, out_shape[0], gn_groups, n_init_features, drop_label
         )
-        self.RMSE = RMSE
+        self.mse_root = mse_root
 
     def forward(self, x):
         encoder_output, skips = self.encoder(x)
@@ -299,7 +300,7 @@ class UNet(nn.Module):
         decoder_output = torch.sigmoid(decoder_output)
         label_output = self.label_classifier(encoder_output)
         reconstruction_loss = nn.MSELoss()(vae_output, x[:, 0, :, :].unsqueeze(1))
-        if self.RMSE:
+        if self.mse_root:
             reconstruction_loss = torch.sqrt(reconstruction_loss)
         return (
             decoder_output,
@@ -316,6 +317,8 @@ class VesselSegmentationModel(pl.LightningModule):
         if config is None:
             config = {}
         self.in_channels = config["in_channels"] if "in_channels" in config else 3
+        if self.in_channels != 3 and self.in_channels != 1:
+            raise ValueError("The number of input channels must be either 1 or 3.")
         self.out_shape = (
             config["out_shape"] if "out_shape" in config else (25, 512, 512)
         )
@@ -325,7 +328,7 @@ class VesselSegmentationModel(pl.LightningModule):
         )
         self.drop_enc = config["drop_enc"] if "drop_enc" in config else 0.2
         self.drop_label = config["drop_label"] if "drop_label" in config else 0.4
-        self.RMSE = config["RMSE"] if "RMSE" in config else False
+        self.mse_root = config["mse_root"] if "mse_root" in config else False
         self.model = UNet(
             self.in_channels,
             self.out_shape,
@@ -333,7 +336,7 @@ class VesselSegmentationModel(pl.LightningModule):
             self.n_init_features,
             self.drop_enc,
             self.drop_label,
-            self.RMSE,
+            self.mse_root,
         )
         self.multi_class = self.out_shape[0] > 1
         self.n_classes = self.out_shape[0]
@@ -459,7 +462,7 @@ class VesselSegmentationModel(pl.LightningModule):
             tversky_loss,
             classification_loss,
         ) = self._loss(
-            batch["transformed_image"],
+            batch["transformed_image"] if self.in_channels == 3 else batch["original_image"],
             batch["separate_masks"],
             batch["labels"],
         )
@@ -514,9 +517,11 @@ class VesselSegmentationModel(pl.LightningModule):
             tversky_loss,
             classification_loss,
         ) = self._loss(
-            batch["transformed_image"], batch["separate_masks"], batch["labels"]
+            batch["transformed_image"] if self.in_channels == 3 else batch["original_image"],
+            batch["separate_masks"],
+            batch["labels"]
         )
-        y_hat, _, _, _, _ = self.model(batch["transformed_image"])
+        y_hat, _, _, _, _ = self.model(batch["transformed_image"] if self.in_channels == 3 else batch["original_image"])
         y = batch["separate_masks"].to(torch.long)
         tp, fp, fn, tn = get_stats(y_hat, y, mode="multilabel", threshold=threshold)
         f1, iou = (
@@ -536,7 +541,7 @@ class VesselSegmentationModel(pl.LightningModule):
 
     def test_step(self, batch, batch_idx, threshold=0.5):
         # Calculate confusion matrix and extract metrics from it
-        y_hat, _, _, _, _ = self.model(batch["transformed_image"])
+        y_hat, _, _, _, _ = self.model(batch["transformed_image"] if self.in_channels == 3 else batch["original_image"])
         y = batch["separate_masks"].to(torch.long)
         tp, fp, fn, tn = get_stats(y_hat, y, mode="multilabel", threshold=threshold)
         f1, iou = (
@@ -571,7 +576,7 @@ if __name__ == "__main__":
             "lambda_label": 0.5,
             "alpha_tversky": 0.4,
             "beta_tversky": 0.6,
-            "RMSE": True,
+            "mse_root": True,
         }
     )
 
@@ -592,10 +597,8 @@ if __name__ == "__main__":
         callbacks=callbacks,
         log_every_n_steps=1,
         enable_progress_bar=True,
+        fast_dev_run=True,
     )
-
-    # Compile the model
-    compiled_model = torch.compile(model, fullgraph=True)
 
     # Train the model
     trainer.fit(model) 

@@ -81,6 +81,9 @@ class ArcadeDataset(Dataset):
             "labels": torch.tensor(labels, dtype=torch.float32),
         }
 
+    def __iter__(self):
+        for i in range(len(self) - 1):
+            yield self[i]
 
 def load_dataset(split, base_path="data/arcade/syntax", transform=None, num_classes=25):
     # Define paths for the specific split
@@ -126,7 +129,7 @@ def get_color(category_id):
 
 # Visualize the images and masks
 def visualize_batch(batch, num_classes=25, num_images=1):
-    fig, axes = plt.subplots(5, num_images, figsize=(20, 25))
+    _, axes = plt.subplots(5, num_images + 1, figsize=(20, 25))
 
     # Titles for each row
     row_titles = [
@@ -138,11 +141,20 @@ def visualize_batch(batch, num_classes=25, num_images=1):
     ]
 
     for row_idx, row_title in enumerate(row_titles):
-        # Display row title
-        axes[row_idx, 0].set_ylabel(row_title, fontsize=16, labelpad=20)
+        # Display col title on the leftmost column
+        axes[row_idx, 0].text(
+            0.5,
+            0.5,
+            row_title,
+            fontsize=24,
+            ha="center",
+            va="center",
+            transform=axes[row_idx, 0].transAxes,
+        )
+        axes[row_idx, 0].axis("off")
 
         for i in range(num_images):
-            ax = axes[row_idx, i]
+            ax = axes[row_idx, i + 1]
             if row_idx == 0:  # Original Image
                 ax.imshow(
                     batch["original_image"][i].squeeze().cpu().numpy(), cmap="gray"
@@ -216,8 +228,6 @@ def visualize_batch(batch, num_classes=25, num_images=1):
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.92)
-    plt.show()
-
 
 if __name__ == "__main__":
     train_loader = torch.utils.data.DataLoader(
