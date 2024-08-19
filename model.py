@@ -5,8 +5,6 @@ from segmentation_models_pytorch.metrics import f1_score, get_stats, iou_score
 
 from arcade_dataset import load_dataset
 
-H_in, W_in = 512, 512
-
 
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, gn_groups=8):
@@ -34,13 +32,12 @@ class UNetEncoder(nn.Module):
     def __init__(
         self,
         in_channels,
-        out_shape=(1, H_in, W_in),
+        out_shape=(1, 512, 512),
         gn_groups=8,
         n_init_features=32,
         drop=0.2,
     ):
         super(UNetEncoder, self).__init__()
-        H_in, W_in = out_shape[1], out_shape[2]
         self.drop = drop
         self.initial_conv = nn.Conv2d(
             in_channels, n_init_features, kernel_size=3, stride=1, padding=1
@@ -68,10 +65,10 @@ class UNetEncoder(nn.Module):
         )
         self.downsamples = nn.ModuleList(
             [
-                nn.AdaptiveMaxPool2d((H_in // 2, W_in // 2)),
-                nn.AdaptiveMaxPool2d((H_in // 4, W_in // 4)),
-                nn.AdaptiveMaxPool2d((H_in // 8, W_in // 8)),
-                nn.AdaptiveMaxPool2d((H_in // 16, W_in // 16)),
+                nn.AdaptiveMaxPool2d((512 // 2, 512 // 2)),
+                nn.AdaptiveMaxPool2d((512 // 4, 512 // 4)),
+                nn.AdaptiveMaxPool2d((512 // 8, 512 // 8)),
+                nn.AdaptiveMaxPool2d((512 // 16, 512 // 16)),
             ]
         )
 
@@ -164,7 +161,7 @@ class VAEDecoder(nn.Module):
                 padding=1,
             ),
             nn.Flatten(),
-            nn.Linear(n_init_features // 2 * H_in // 32 * W_in // 32, 256),
+            nn.Linear(n_init_features // 2 * 512 // 32 * 512 // 32, 256),
         )
         self.mu = nn.Linear(256, 128)
         self.logvar = nn.Linear(256, 128)
@@ -172,9 +169,9 @@ class VAEDecoder(nn.Module):
             0.5 * logvar
         )
         self.upsample = nn.Sequential(
-            nn.Linear(128, n_init_features // 4 * H_in // 16 * W_in // 16),
+            nn.Linear(128, n_init_features // 4 * 512 // 16 * 512 // 16),
             nn.ReLU(),
-            nn.Unflatten(1, (n_init_features // 4, H_in // 16, W_in // 16)),
+            nn.Unflatten(1, (n_init_features // 4, 512 // 16, 512 // 16)),
             nn.Conv2d(
                 n_init_features // 4,
                 n_init_features * 8,
@@ -248,13 +245,12 @@ class LabelClassifier(nn.Module):
                 padding=1,
             ),
             nn.Flatten(),
-            # nn.Linear(n_init_features // 2 * H_in // 32 * W_in // 32, 256),
-            nn.Linear(n_init_features // 2 * H_in // 32 * W_in // 32, 512), # If needed to load old models, do 512 -> 256
+            nn.Linear(n_init_features // 2 * 512 // 32 * 512 // 32, 512),
         )
         self.fc = nn.Sequential(
-            nn.Linear(512, 256), # And remove these
-            nn.ReLU(), # *
-            nn.Dropout(drop), # *
+            nn.Linear(512, 256),
+            nn.ReLU(), 
+            nn.Dropout(drop),
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Dropout(drop),
