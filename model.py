@@ -7,6 +7,9 @@ from arcade_dataset import load_dataset
 
 
 class ResBlock(nn.Module):
+    """
+    Residual block with Group Normalization and ReLU activation.
+    """
     def __init__(self, in_channels, out_channels, gn_groups=8):
         super(ResBlock, self).__init__()
         self.residual = nn.Conv2d(
@@ -24,11 +27,13 @@ class ResBlock(nn.Module):
     def forward(self, x):
         res = self.residual(x)
         x = self.block(x)
-        x = x + res
-        return x
+        return x + res
 
 
 class UNetEncoder(nn.Module):
+    """
+    U-Net encoder with residual blocks and max pooling.
+    """
     def __init__(
         self,
         in_channels,
@@ -85,6 +90,9 @@ class UNetEncoder(nn.Module):
 
 
 class UNetDecoder(nn.Module):
+    """
+    U-Net decoder with residual blocks and upsampling.
+    """
     def __init__(self, out_shape, gn_groups=8, n_init_features=32):
         super(UNetDecoder, self).__init__()
         self.blocks = nn.ModuleList(
@@ -148,6 +156,9 @@ class UNetDecoder(nn.Module):
 
 
 class VAEDecoder(nn.Module):
+    """
+    Variational Autoencoder decoder for image reconstruction.
+    """
     def __init__(self, gn_groups=8, n_init_features=32):
         super(VAEDecoder, self).__init__()
         self.initial_layers = nn.Sequential(
@@ -230,6 +241,9 @@ class VAEDecoder(nn.Module):
 
 
 class LabelClassifier(nn.Module):
+    """
+    Multi-label classifier for image classification.
+    """
     def __init__(
         self, in_channels, n_classes, gn_groups=8, n_init_features=32, drop=0.4,
     ):
@@ -268,6 +282,9 @@ class LabelClassifier(nn.Module):
 
 
 class UNet(nn.Module):
+    """
+    Complete U-Net model with VAE decoder and label classifier.
+    """
     def __init__(
         self,
         in_channels,
@@ -308,6 +325,9 @@ class UNet(nn.Module):
 
 
 class VesselSegmentationModel(pl.LightningModule):
+    """
+    PyTorch Lightning module for vessel segmentation.
+    """
     def __init__(self, config=None):
         super(VesselSegmentationModel, self).__init__()
         if config is None:
@@ -339,12 +359,15 @@ class VesselSegmentationModel(pl.LightningModule):
         self.config = config
 
     def _label_cross_entropy_loss(self, y_gt, y_pred):
+        """Calculate binary cross-entropy loss for label classification."""
         return torch.nn.functional.binary_cross_entropy(y_pred, y_gt)
 
     def _bce_loss(self, y_gt, y_pred):
+        """Calculate binary cross-entropy loss for segmentation."""
         return torch.functional.F.binary_cross_entropy(y_pred, y_gt, reduction="mean")
 
     def _dice_loss(self, y_gt, y_pred, multi_class=False, eps=1e-6):
+        """Calculate Dice loss for segmentation."""
         if not multi_class:
             y_gt = y_gt.view(-1)
             y_pred = y_pred.view(-1)
@@ -361,6 +384,7 @@ class VesselSegmentationModel(pl.LightningModule):
             return 1 - dice_score.mean()
         
     def _tversky_loss(self, y_gt, y_pred, alpha=0.4, beta=0.6, eps=1e-6, multi_class=False):
+        """Calculate Tversky loss for segmentation."""
         if not multi_class:
             y_gt = y_gt.view(-1)
             y_pred = y_pred.view(-1)
@@ -392,6 +416,7 @@ class VesselSegmentationModel(pl.LightningModule):
         lambda_tversky=0.0,
         lambda_label=0.0,
     ):
+        """Calculate combined loss for the model."""
         y_hat, _, [mu, logvar], labels, reconstruction_loss = self.model(x)
         kl_loss = -(1 / x.numel()) * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
@@ -449,6 +474,7 @@ class VesselSegmentationModel(pl.LightningModule):
         )
 
     def training_step(self, batch, batch_idx):
+        """Perform a single training step."""
         (
             loss,
             kl_loss,
@@ -472,6 +498,7 @@ class VesselSegmentationModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self, lr=1e-4):
+        """Configure optimizer and learning rate scheduler."""
         lr = self.config["lr"] if "lr" in self.config else lr
         optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -486,6 +513,7 @@ class VesselSegmentationModel(pl.LightningModule):
         scheduler.step()
 
     def train_dataloader(self, batch_size=8):
+        """Create training dataloader."""
         batch_size = (
             self.config["batch_size"] if "batch_size" in self.config else batch_size
         )
@@ -494,16 +522,19 @@ class VesselSegmentationModel(pl.LightningModule):
         )
 
     def val_dataloader(self, batch_size=8):
+        """Create validation dataloader."""
         return torch.utils.data.DataLoader(
             load_dataset("val"), batch_size=batch_size, num_workers=7, shuffle=False
         )
 
     def test_dataloader(self, batch_size=8):
+        """Create test dataloader."""
         return torch.utils.data.DataLoader(
             load_dataset("test"), batch_size=batch_size, num_workers=7, shuffle=False
         )
 
     def validation_step(self, batch, batch_idx, threshold=0.5):
+        """Perform a single validation step."""
         (
             loss,
             kl_loss,
@@ -536,7 +567,7 @@ class VesselSegmentationModel(pl.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx, threshold=0.5):
-        # Calculate confusion matrix and extract metrics from it
+        """Perform a single test step."""
         y_hat, _, _, _, _ = self.model(batch["transformed_image"] if self.in_channels == 3 else batch["original_image"])
         y = batch["separate_masks"].to(torch.long)
         tp, fp, fn, tn = get_stats(y_hat, y, mode="multilabel", threshold=threshold)

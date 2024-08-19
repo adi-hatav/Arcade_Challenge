@@ -5,13 +5,23 @@ import wandb
 from model import VesselSegmentationModel
 
 def train():
+    """
+    Train the VesselSegmentationModel using hyperparameters from wandb.config.
+    This function is used for hyperparameter tuning with wandb sweeps.
+    """
     torch.cuda.empty_cache()
     torch.set_float32_matmul_precision('medium')
+    
+    # Initialize wandb run
     wandb.init()
     config = wandb.config
     run = wandb.run
     run_id = run.id
+    
+    # Create model instance with current sweep config
     model = VesselSegmentationModel(config)
+    
+    # Define callbacks for model checkpointing and learning rate monitoring
     callbacks = [
         pl.callbacks.ModelCheckpoint(
             monitor="val_f1",
@@ -21,7 +31,11 @@ def train():
         ),
         pl.callbacks.LearningRateMonitor(logging_interval="step"),
     ]
+    
+    # Set up WandB logger
     wandb_logger = pl.loggers.WandbLogger()
+    
+    # Initialize PyTorch Lightning Trainer
     trainer = pl.Trainer(
         max_epochs=30,
         accelerator="auto",
@@ -30,13 +44,22 @@ def train():
         enable_progress_bar=True,
         logger=wandb_logger,
     )
+    
+    # Train the model
     trainer.fit(model)
+    
+    # Test the model
     trainer.test(model)
+    
+    # Finish the wandb run
     if wandb.run is not None:
         wandb.finish()
 
 if __name__ == "__main__":
+    # Login to wandb
     wandb.login()
+    
+    # Define the sweep configuration
     sweep_config = {
         "method": "random",
         "metric": {
@@ -83,5 +106,9 @@ if __name__ == "__main__":
             },
         },
     }
+    
+    # Initialize the sweep
     sweep_id = wandb.sweep(sweep_config, project="DMI-2024")
+    
+    # Start the sweep agent
     wandb.agent(sweep_id, train, count=100)
