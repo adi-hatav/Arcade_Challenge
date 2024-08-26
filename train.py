@@ -10,6 +10,7 @@ if __name__ == "__main__":
         os.makedirs("models")
 
     # Initialize wandb
+    wandb.login()
     wandb.init(name=experiment_name)
 
     # Clear the cuda cache
