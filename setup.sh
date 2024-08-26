@@ -1,0 +1,1 @@
+python fetch_data.py && python preprocess_images.py && python train.py

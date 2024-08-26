@@ -1,8 +1,11 @@
 import pytorch_lightning as pl
 import torch
-
+import os
 import wandb
 from model import VesselSegmentationModel
+
+if not os.path.exists('models'):
+    os.makedirs('models')
 
 def train(config, epochs=250):
     """

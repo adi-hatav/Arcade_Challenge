@@ -2,7 +2,6 @@ import os
 import cv2
 import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 def top_hat_transform(image):
     # Apply the white top-hat transformation
@@ -47,6 +46,7 @@ def canny_edge(image):
     return enhanced_image
 
 def preprocess_all_imgs(transform):
+    # Apply the given transformation to all images in the dataset
     img_dir_prefix = 'data/arcade/syntax'
     out_dir_prefix = f'data/arcade/processed/syntax/{transform.__name__}'
     data_folds = ['train', 'val', 'test']
@@ -68,28 +68,8 @@ def preprocess_all_imgs(transform):
             img = transform(img)
             cv2.imwrite(out_path, img)
 
-def test_preprocess(transform, img_idx = None):
-    if img_idx is None:
-        img_idx = np.random.randint(1, 200)
-
-    original_img_path = f'data/arcade/syntax/val/images/{img_idx}.png'
-    processed_img_path = f'data/arcade/syntax/processed/{transform.__name__}/val/images/{img_idx}.png'
-
-    plt.figure(figsize=(10, 10))
-    plt.subplot(1, 2, 1)
-    original_img = cv2.imread(original_img_path)
-    original_img = cv2.cvtColor(original_img, cv2.COLOR_BGR2GRAY)
-    plt.imshow(original_img, cmap='gray')
-    plt.title('Original Image')
-
-    plt.subplot(1, 2, 2)
-    processed_img = cv2.imread(processed_img_path)
-    processed_img = cv2.cvtColor(processed_img, cv2.COLOR_BGR2GRAY)
-    plt.imshow(processed_img, cmap='gray')
-    plt.title('Processed Image')
-
-    plt.show()
-
 if __name__ == '__main__':
-    preprocess_all_imgs(top_hat_transform)
-    preprocess_all_imgs(canny_edge)
+    if not os.path.exists('data/arcade/processed'):
+        transforms = [top_hat_transform, canny_edge]
+        for transform in transforms:
+            preprocess_all_imgs(transform)

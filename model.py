@@ -10,6 +10,7 @@ class ResBlock(nn.Module):
     """
     Residual block with Group Normalization and ReLU activation.
     """
+
     def __init__(self, in_channels, out_channels, gn_groups=8):
         super(ResBlock, self).__init__()
         self.residual = nn.Conv2d(
@@ -34,6 +35,7 @@ class UNetEncoder(nn.Module):
     """
     U-Net encoder with residual blocks and max pooling.
     """
+
     def __init__(
         self,
         in_channels,
@@ -93,6 +95,7 @@ class UNetDecoder(nn.Module):
     """
     U-Net decoder with residual blocks and upsampling.
     """
+
     def __init__(self, out_shape, gn_groups=8, n_init_features=32):
         super(UNetDecoder, self).__init__()
         self.blocks = nn.ModuleList(
@@ -159,6 +162,7 @@ class VAEDecoder(nn.Module):
     """
     Variational Autoencoder decoder for image reconstruction.
     """
+
     def __init__(self, gn_groups=8, n_init_features=32):
         super(VAEDecoder, self).__init__()
         self.initial_layers = nn.Sequential(
@@ -236,7 +240,7 @@ class VAEDecoder(nn.Module):
         x = self.sample(mu, logvar)
         x = self.upsample(x)
         x = self.final_conv(x)
-        x = 255.0 * torch.sigmoid(x) 
+        x = 255.0 * torch.sigmoid(x)
         return x, [mu, logvar]
 
 
@@ -244,8 +248,14 @@ class LabelClassifier(nn.Module):
     """
     Multi-label classifier for image classification.
     """
+
     def __init__(
-        self, in_channels, n_classes, gn_groups=8, n_init_features=32, drop=0.4,
+        self,
+        in_channels,
+        n_classes,
+        gn_groups=8,
+        n_init_features=32,
+        drop=0.4,
     ):
         super(LabelClassifier, self).__init__()
         self.initial_layers = nn.Sequential(
@@ -263,7 +273,7 @@ class LabelClassifier(nn.Module):
         )
         self.fc = nn.Sequential(
             nn.Linear(512, 256),
-            nn.ReLU(), 
+            nn.ReLU(),
             nn.Dropout(drop),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -285,6 +295,7 @@ class UNet(nn.Module):
     """
     Complete U-Net model with VAE decoder and label classifier.
     """
+
     def __init__(
         self,
         in_channels,
@@ -328,6 +339,7 @@ class VesselSegmentationModel(pl.LightningModule):
     """
     PyTorch Lightning module for vessel segmentation.
     """
+
     def __init__(self, config=None):
         super(VesselSegmentationModel, self).__init__()
         if config is None:
@@ -372,7 +384,9 @@ class VesselSegmentationModel(pl.LightningModule):
             y_gt = y_gt.view(-1)
             y_pred = y_pred.view(-1)
             intersection = torch.sum(y_gt * y_pred)
-            dice_score = (eps + 2 * intersection) / (torch.sum(y_gt) + torch.sum(y_pred) + eps)
+            dice_score = (eps + 2 * intersection) / (
+                torch.sum(y_gt) + torch.sum(y_pred) + eps
+            )
             return 1 - dice_score
         else:
             y_gt = y_gt.view(-1, self.n_classes)
@@ -382,8 +396,10 @@ class VesselSegmentationModel(pl.LightningModule):
                 torch.sum(y_gt, dim=0) + torch.sum(y_pred, dim=0) + 1
             )
             return 1 - dice_score.mean()
-        
-    def _tversky_loss(self, y_gt, y_pred, alpha=0.4, beta=0.6, eps=1e-6, multi_class=False):
+
+    def _tversky_loss(
+        self, y_gt, y_pred, alpha=0.4, beta=0.6, eps=1e-6, multi_class=False
+    ):
         """Calculate Tversky loss for segmentation."""
         if not multi_class:
             y_gt = y_gt.view(-1)
@@ -453,7 +469,13 @@ class VesselSegmentationModel(pl.LightningModule):
 
         classification_loss = self._label_cross_entropy_loss(labels_gt, labels)
         dice_loss = self._dice_loss(y, y_hat, multi_class=self.multi_class)
-        tversky_loss = self._tversky_loss(y, y_hat, alpha=alpha_tversky, beta=beta_tversky, multi_class=self.multi_class)
+        tversky_loss = self._tversky_loss(
+            y,
+            y_hat,
+            alpha=alpha_tversky,
+            beta=beta_tversky,
+            multi_class=self.multi_class,
+        )
         bce_loss = self._bce_loss(y, y_hat)
         loss = (
             +lambda_kl * kl_loss
@@ -484,7 +506,9 @@ class VesselSegmentationModel(pl.LightningModule):
             tversky_loss,
             classification_loss,
         ) = self._loss(
-            batch["transformed_image"] if self.in_channels == 3 else batch["original_image"],
+            batch["transformed_image"]
+            if self.in_channels == 3
+            else batch["original_image"],
             batch["separate_masks"],
             batch["labels"],
         )
@@ -544,11 +568,17 @@ class VesselSegmentationModel(pl.LightningModule):
             tversky_loss,
             classification_loss,
         ) = self._loss(
-            batch["transformed_image"] if self.in_channels == 3 else batch["original_image"],
+            batch["transformed_image"]
+            if self.in_channels == 3
+            else batch["original_image"],
             batch["separate_masks"],
-            batch["labels"]
+            batch["labels"],
         )
-        y_hat, _, _, _, _ = self.model(batch["transformed_image"] if self.in_channels == 3 else batch["original_image"])
+        y_hat, _, _, _, _ = self.model(
+            batch["transformed_image"]
+            if self.in_channels == 3
+            else batch["original_image"]
+        )
         y = batch["separate_masks"].to(torch.long)
         tp, fp, fn, tn = get_stats(y_hat, y, mode="multilabel", threshold=threshold)
         f1, iou = (
@@ -568,7 +598,11 @@ class VesselSegmentationModel(pl.LightningModule):
 
     def test_step(self, batch, batch_idx, threshold=0.5):
         """Perform a single test step."""
-        y_hat, _, _, _, _ = self.model(batch["transformed_image"] if self.in_channels == 3 else batch["original_image"])
+        y_hat, _, _, _, _ = self.model(
+            batch["transformed_image"]
+            if self.in_channels == 3
+            else batch["original_image"]
+        )
         y = batch["separate_masks"].to(torch.long)
         tp, fp, fn, tn = get_stats(y_hat, y, mode="multilabel", threshold=threshold)
         f1, iou = (
@@ -578,55 +612,3 @@ class VesselSegmentationModel(pl.LightningModule):
         self.log("test_f1", f1)
         self.log("test_iou", iou)
         return f1, iou
-
-
-if __name__ == "__main__":
-    # Clear the cuda cache
-    torch.cuda.empty_cache()
-    torch.set_float32_matmul_precision("medium")
-
-    # Create the model
-    model = VesselSegmentationModel(
-        config={
-            "in_channels": 3,
-            "out_shape": (25, 512, 512),
-            "gn_groups": 8,
-            "n_init_features": 32,
-            "drop_enc": 0.4,
-            "drop_label": 0.4,
-            "lr": 5e-3,
-            "lambda_kl": 0.1,
-            "lambda_l2": 0.1,
-            "lambda_bce": 0.5,
-            "lambda_dice": 1.0,
-            "lambda_tversky": 0.0,
-            "lambda_label": 0.5,
-            "alpha_tversky": 0.4,
-            "beta_tversky": 0.6,
-            "mse_root": True,
-        }
-    )
-
-    callbacks = [
-        pl.callbacks.ModelCheckpoint(
-            monitor="val_f1",
-            dirpath="./models/only_dice",
-            save_top_k=5,
-            mode="max",
-        ),
-        pl.callbacks.LearningRateMonitor(logging_interval="step"),
-    ]
-
-    # Continue training
-    trainer = pl.Trainer(
-        max_epochs=2,
-        accelerator="auto",
-        callbacks=callbacks,
-        log_every_n_steps=1,
-        enable_progress_bar=True,
-        fast_dev_run=True,
-    )
-
-    # Train the model
-    trainer.fit(model) 
-    trainer.test(model)
