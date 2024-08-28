@@ -30,7 +30,7 @@ def train(config, epochs=250):
     callbacks = [
         pl.callbacks.ModelCheckpoint(
             monitor="val_f1",
-            dirpath=f"./models/final_model_mse_fix/{run_id}",
+            dirpath=f"./models/final_model/{run_id}",
             save_top_k=3,
             mode="max",
         ),
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     api = wandb.Api()
     
     # Fetch the sweep information
-    sweep = api.sweep("nlp-course-zvi-and-tomer/DMI-2024/sweeps/nqyqzk32")
+    sweep = api.sweep("nqyqzk32")
 
     # Get the best run parameters from the sweep
     best_run = sweep.best_run(order='val_f1')

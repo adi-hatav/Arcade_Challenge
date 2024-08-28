@@ -25,7 +25,7 @@ def train():
     callbacks = [
         pl.callbacks.ModelCheckpoint(
             monitor="val_f1",
-            dirpath=f"./models/final_wandb_sweep/{run_id}",
+            dirpath=f"./models/wandb_sweep/{run_id}",
             save_top_k=3,
             mode="max",
         ),
