@@ -2,8 +2,8 @@
 
 ## The ARCADE Vessel Segmentation Challenge
 **Submitted by:**
-- **Zvi Badash** | 214553034 | zvi.badash@campus.technion.ac.il
-- **Adi Hatav** | 209143486 | adi.hatav@campus.technion.ac.il
+- **Zvi Badash** | zvi.badash@campus.technion.ac.il
+- **Adi Hatav** | adi.hatav@campus.technion.ac.il
 
 ### Project Overview
 This project was based on the ARCADE Challenge. This challenge focused on the segmentation of 25 different classes of vessels from X-ray angiography images. Our approach combined segmentation, classification and reconstruction tasks, utilizing an encoder-decoder network architecture with combined encoder to all 3 tasks. This setup allowed the encoder to learn richer features by incorporating signals from reconstruction (preserving detailed information) and classification (focusing on discriminative features), leading to more effective segmentation.
